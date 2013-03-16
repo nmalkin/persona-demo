@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+
+<html>
+<head>
+  <title>Persona Demo: Server</title>
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+  <link rel="stylesheet" media="all" href="public/stylesheets/normalize.css" />
+  <link rel="stylesheet" media="all" href="docco.css" />
+</head>
+<body>
+  <div class="container">
+    <div class="page">
+
+      <div class="header">
+        
+          
+          <h1>Persona Demo: Server</h1>
+
+          
+        
+
+        
+          <div class="toc">
+            <h3>Table of Contents</h3>
+            <ol>
+              
+                
+                <li>
+                  <a class="source" href="README.html">
+                    README.md
+                  </a>
+                </li>
+              
+                
+                <li>
+                  <a class="source" href="client.html">
+                    client.litcoffee
+                  </a>
+                </li>
+              
+                
+                <li>
+                  <a class="source" href="server.html">
+                    server.litcoffee
+                  </a>
+                </li>
+              
+            </ol>
+          </div>
+        
+      </div>
+
+      
+        
+        <p>This file provides an implementation of the server for our demo app.
+The server is responsible primarily for providing the API with which the client
+interacts.</p>
+<p>The specific functionality provided by the server includes:</p>
+<ul>
+<li>Serving the static files that constitute the client</li>
+<li>Verifying the assertions supplied by Persona to the client</li>
+<li>Managing user sessions</li>
+<li>Serving restricted content</li>
+</ul>
+<p>Let&#39;s tackle these in order.</p>
+<h2>The framework</h2>
+<p>For this demo, we&#39;ll use the <a href="http://expressjs.com/">Express framework</a> for
+<a href="http://nodejs.org/">node.js</a> to manage the routes for the app&#39;s
+API.</p>
+
+        
+          <div class="highlight"><pre>express = require <span class="string">'express'</span>
+app = express()</pre></div>
+        
+      
+        
+        <p>We&#39;ll also use some of the middleware Express provides, which will help us:</p>
+<ul>
+<li>log requests (useful for debugging)</li>
+<li>serve static files</li>
+<li>parse the body of requests</li>
+<li>manage sessions</li>
+</ul>
+
+        
+          <div class="highlight"><pre>app.use express.logger()
+app.use express.static __dirname + <span class="string">'/public'</span>
+app.use express.bodyParser()
+app.use express.cookieParser()
+app.use express.cookieSession secret: process.env.SECRET || <span class="string">'shhhhhhhhhhh!'</span></pre></div>
+        
+      
+        
+        <h2>Verifying assertions</h2>
+<p>In our demo, the biggest job of the server is to verify the assertions generated
+by Persona and given to the client. Since users can tamper with anything that
+happens on the client side, verification must be done by the server.</p>
+<p>The <a href="https://github.com/mozilla/id-specs/blob/prod/browserid/index.md">specs for the BrowserID protocol</a> describe how assertions should be verified.
+However, the cryptography can be tricky, and doing it yourself may get complicated.
+Instead, you will almost definitely want to use the <a href="https://developer.mozilla.org/en-US/docs/Persona/Remote_Verification_API">Remote Verification API</a>,
+provided by Mozilla, to verify your assertions. That&#39;s what we&#39;ll do in this
+demo.</p>
+<p>To use the Remote Verification API, you make a POST request to Mozilla&#39;s servers
+with two pieces of information.</p>
+<ol>
+<li>The assertion</li>
+<li>The audience</li>
+</ol>
+<p>We already saw the assertion in the client: it&#39;s a token containing a
+cryptographically signed claim about the identity of your user.</p>
+<p>The <em>audience</em> is the protocol, domain name, and port of your site.
+For example, if your login page is at <code>example.com/login</code>, and you&#39;re serving
+it over HTTPS, and running on port 443, your audience would be
+<code>https://example.com:443</code>.</p>
+<p><strong>Important</strong>: the audience must match the server for which the assertion is
+generated. So, if you host your login page at <code>example.com</code> but you declare
+your audience as <code>http://example.org</code>, there&#39;s going to be a mismatch, and
+verification will fail.</p>
+<h4>Remote Verification API in action</h4>
+<p>Here, we formulate the request that we&#39;ll make to the Remote Verification API
+by first putting together the body (consisting of the assertion and audience),
+and then the headers. The headers contain the destination of the request
+(<code>verifier.login.persona.org/verify</code>), specify that this is a POST request,
+and include the <code>Content-Length</code> of the body (this is a required field!).</p>
+<p>Then we actually make the request. <code>makeRequest</code> isn&#39;t a built-in function; we
+will implement it later.</p>
+<p>The response from the server will contain a status — <code>okay</code> if verification
+succeeded — and an email address, if it did.</p>
+
+        
+          <div class="highlight"><pre>app.post <span class="string">'/verify'</span>, (req, res) -&gt;
+    assertion = req.body.assertion
+
+    requestBody = JSON.stringify
+        assertion: assertion
+        audience: process.env.AUDIENCE || <span class="string">'http://127.0.0.1:'</span> + PORT
+
+    requestHeaders =
+        host: <span class="string">'verifier.login.persona.org'</span>
+        path: <span class="string">'/verify'</span>
+        method: <span class="string">'POST'</span>
+        headers:
+            <span class="string">'Content-Length'</span>: requestBody.length
+            <span class="string">'Content-Type'</span>: <span class="string">'application/json'</span>
+
+    makeRequest requestHeaders, requestBody, (responseBody) -&gt;
+        response = JSON.parse responseBody
+        <span class="keyword">if</span> response.status <span class="keyword">is</span> <span class="string">'okay'</span>
+            req.session.email = response.email
+            res.send <span class="string">'yes'</span>
+        <span class="keyword">else</span>
+            req.session = <span class="literal">null</span>
+            res.send <span class="string">'no'</span>
+            console.log response <span class="comment"># so you know what went wrong</span></pre></div>
+        
+      
+        
+        <p>Notice that after receiving the response from the verifier, we update the user&#39;s
+session. This will be important for the following steps.</p>
+<h2>Managing user sessions</h2>
+<p>In addition to verifying assertions, the client makes two kinds of calls to the
+server to manage users&#39; identities.</p>
+<ol>
+<li>When it wants to find out if a user is currently logged in</li>
+<li>When it&#39;s telling the server that a user has logged out</li>
+</ol>
+<p>Above, we stored information about the user&#39;s authentication status in their
+session. Now, we&#39;ll use that information to perform these two tasks.</p>
+
+        
+          <div class="highlight"><pre>app.get <span class="string">'/whoami'</span>, (req, res) -&gt;
+    <span class="keyword">if</span> <span class="string">'email'</span> <span class="keyword">of</span> req.session
+        res.send req.session.email
+    <span class="keyword">else</span>
+        res.send <span class="string">'idk'</span>
+
+app.post <span class="string">'/logout'</span>, (req, res) -&gt;
+    req.session = <span class="literal">null</span>
+    res.send <span class="string">'done'</span></pre></div>
+        
+      
+        
+        <h2>Serving private content</h2>
+<p>If your app is using authentication, there&#39;s probably some part of it that only
+logged-in users should see. To demo this functionality, we provide a page that
+displays content only to authorized users.</p>
+
+        
+          <div class="highlight"><pre>app.get <span class="string">'/private'</span>, (req, res) -&gt;
+    <span class="keyword">if</span> <span class="string">'email'</span> <span class="keyword">of</span> req.session
+        res.send <span class="string">"Hey there! You're logged in as <span class="subst">#{req.session.email}</span>."</span>
+    <span class="keyword">else</span>
+        res.send <span class="string">"Whoa, you're not logged in. Nothing to see here, move along!"</span></pre></div>
+        
+      
+        
+        <h2>Missing pieces</h2>
+<p>If you&#39;ve made it this far, congratulations! You should now have a working
+understanding of the Persona API. The remainder of this file fills in a few
+missing pieces that will make our app work.</p>
+<p>Above, when we made a call to the verifier service, we used <code>makeRequest</code>,
+which is just a convenience function that makes the API for sending HTTPS
+requests a little bit cleaner. We define it now.</p>
+
+        
+          <div class="highlight"><pre>https = require <span class="string">'https'</span>
+
+<span class="function"><span class="title">makeRequest</span></span> = (headers, body, callback) -&gt;
+    vreq = https.request headers, handleResponse callback
+    vreq.write body</pre></div>
+        
+      
+        
+        <p>Handling the response to the server involves listening for chunks of data and
+accumulating them as they come in. The <code>end</code> event signals to us that we&#39;re done.</p>
+
+        
+          <div class="highlight"><pre><span class="function"><span class="title">handleResponse</span></span> = (callback) -&gt;
+    (vres) -&gt;
+        responseBody = <span class="string">''</span>
+        vres.<span class="literal">on</span> <span class="string">'data'</span>, (chunk) -&gt;
+            responseBody += chunk
+        vres.<span class="literal">on</span> <span class="string">'end'</span>, -&gt;
+            callback responseBody</pre></div>
+        
+      
+        
+        <p>One last step to set our app into motion:</p>
+
+        
+          <div class="highlight"><pre>PORT = <span class="number">8080</span> <span class="comment"># default port</span>
+app.listen process.env.PORT || PORT</pre></div>
+        
+      
+        
+        <p>And now we&#39;re done! You now know what it takes to get Persona to work on your
+server. (And if you haven&#39;t already, be sure to see <a href="client.html">what happens on the client
+side</a> as well.)</p>
+<p>That wasn&#39;t so bad, was it? Now it&#39;s your turn. Go!</p>
+
+        
+      
+      <div class="fleur">h</div>
+    </div>
+  </div>
+</body>
+</html>

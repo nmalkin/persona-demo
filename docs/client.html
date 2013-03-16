@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+
+<html>
+<head>
+  <title>Persona Demo: Client</title>
+  <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+  <link rel="stylesheet" media="all" href="public/stylesheets/normalize.css" />
+  <link rel="stylesheet" media="all" href="docco.css" />
+</head>
+<body>
+  <div class="container">
+    <div class="page">
+
+      <div class="header">
+        
+          
+          <h1>Persona Demo: Client</h1>
+
+          
+        
+
+        
+          <div class="toc">
+            <h3>Table of Contents</h3>
+            <ol>
+              
+                
+                <li>
+                  <a class="source" href="README.html">
+                    README.md
+                  </a>
+                </li>
+              
+                
+                <li>
+                  <a class="source" href="client.html">
+                    client.litcoffee
+                  </a>
+                </li>
+              
+                
+                <li>
+                  <a class="source" href="server.html">
+                    server.litcoffee
+                  </a>
+                </li>
+              
+            </ol>
+          </div>
+        
+      </div>
+
+      
+        
+        <p>This file provides the entirety of the client-side interaction of our demo app.
+Specifically, it takes care of:</p>
+<ul>
+<li>Logging in</li>
+<li>Logging out</li>
+<li>Retrieving and displaying the &quot;content&quot; of our application</li>
+</ul>
+<p>The authentication functions are, of course, performed using Persona.</p>
+<h2>Note</h2>
+<p>If you take a look at <code>index.html</code>
+(<a href="https://github.com/nmalkin/persona-demo/blob/master/app/public/index.html">located</a>
+in <code>app/public</code>), you&#39;ll see that
+it&#39;s extremely bare-bones. The client-side JavaScript takes care of the heavy
+lifting. <em>All</em> the lifting, actually. Note that this doesn&#39;t have to be the case.</p>
+<p>For example (as you&#39;ll see), the client checks with the server about its
+authentication status and asks for the private content if appropriate. You
+could, instead, have the server perform these checks when the user initially
+requests the index page and then render a template.
+Either way is fine.</p>
+<h2>Prerequisites</h2>
+<p>Look at <code>index.html</code> again. Notice that a couple of things are already in place
+for us. First, the &quot;sign in&quot; and &quot;sign out&quot; buttons are there (though hidden
+for now), as is a <code>&lt;div&gt;</code> where we promise to put the content.</p>
+<p>More interestingly, a couple of JavaScript files are included.
+First, there&#39;s <a href="http://jquery.com">jQuery</a>. It&#39;s there to simplify
+<a href="https://developer.mozilla.org/en-US/docs/DOM">DOM</a> manipulation and AJAX calls.</p>
+<p>The other file that is loaded is <code>https://login.persona.org/include.js</code>.
+This is the <em>JavaScript shim</em> for the Persona API. What is it and why do we
+need it?</p>
+<p>Persona implements the <em>BrowserID protocol</em>, which is based on the idea of your
+browser managing the entirety of the authentication process for you. However,
+not all browsers may implement this protocol (at present, none do, though this
+functionality is in development for Firefox). To allow anyone to sign in, even
+if their browser doesn&#39;t support BrowserID, Mozilla provides this shim, which
+implements all the necessary functionality.</p>
+<h2>The Watch API</h2>
+<p>Okay, let&#39;s get started!</p>
+<p>The centerpiece of the client-side Persona protocol is the <em>Watch API</em>.
+You use it to define the behavior of your page when one of two main interactions
+takes place: a login event or logout event.</p>
+<p>You&#39;ll need to create an object with fields named <code>onlogin</code> and <code>onlogout</code>
+and assign a callback to each. These will be called when the respective event
+occurs.</p>
+
+        
+          <div class="highlight"><pre><span class="function"><span class="title">init</span></span> = -&gt;
+    watchOptions =
+        onlogin: loginFunction
+        onlogout: logoutFunction
+        loggedInUser: currentUser</pre></div>
+        
+      
+        
+        <p>The other field in the options object is <code>loggedInUser</code>. This is the email
+address of the user you think is logged in when your page loads
+(assuming you think someone is logged in; it should be <code>null</code> otherwise).
+It&#39;s there to make sure you and Persona agree on the state of your application.
+If there&#39;s a disagreement (for example, you think someone&#39;s logged in, but
+Persona sees the user as logged out), the appropriate callback will be triggered
+when the page is loaded, to get you on the same page.</p>
+<p>Once you have the options, you need to activate them by calling the
+<code>navigator.id.watch</code> function (provided, as described above, either by your
+browser or by the shim).</p>
+
+        
+          <div class="highlight"><pre>navigator.id.watch watchOptions</pre></div>
+        
+      
+        
+        <h2>Logging in</h2>
+<p>What happens when a user tries to log in? As suggested above, Persona will call
+the login function that you give to the Watch API. As its argument, this
+function will receive an <em>assertion</em>, a token that encodes the user&#39;s claim
+about their identity (&quot;Hi, I&#39;m user@example.com&quot;).</p>
+<p>You can&#39;t just take their word for it, though; you&#39;ll need to verify this
+assertion. This has to be done by the server. So, on the client side,
+we&#39;ll just take the assertion and pass it on to our server to do the real work.
+Once we hear back from the server, we&#39;ll know whether the login was successful.</p>
+
+        
+          <div class="highlight"><pre><span class="function"><span class="title">loginFunction</span></span> = (assertion) -&gt;
+    $.post <span class="string">'/verify'</span>, assertion: assertion, (response) -&gt;
+        <span class="keyword">if</span> response <span class="keyword">is</span> <span class="string">'yes'</span>
+            showPrivatePage()
+        <span class="keyword">else</span> <span class="keyword">if</span> response <span class="keyword">is</span> <span class="string">'no'</span>
+            alert <span class="string">'Uh oh. Sign-in failed!'</span></pre></div>
+        
+      
+        
+        <h3>Showing the private page</h3>
+<p>If the user signed in successfully, they will be rewarded with a &quot;private&quot; page,
+displayed only to logged-in users. On the client side, we just load
+this page. On the server, we&#39;ll have to additionally check that the user
+requesting this page is actually logged in.</p>
+
+        
+          <div class="highlight"><pre><span class="function"><span class="title">showPrivatePage</span></span> = -&gt;
+    $(<span class="string">'#login'</span>).hide()
+    $(<span class="string">'#logout'</span>).show()
+    $(<span class="string">'#content'</span>).load <span class="string">'/private'</span></pre></div>
+        
+      
+        
+        <h2>Logging out</h2>
+<p>On logout, our other callback will be called. This is even easier, as there
+are only two things that need to happen.</p>
+<ol>
+<li>We need to update the page for a logged-out user.</li>
+<li>We need to tell the server that the current user is logging out.</li>
+</ol>
+
+        
+          <div class="highlight"><pre><span class="function"><span class="title">logoutFunction</span></span> = -&gt;
+    showPublicPage()
+    $.post <span class="string">'/logout'</span>
+
+<span class="function"><span class="title">showPublicPage</span></span> = -&gt;
+    $(<span class="string">'#login'</span>).show()
+    $(<span class="string">'#logout'</span>).hide()
+    $(<span class="string">'#content'</span>).html <span class="string">''</span></pre></div>
+        
+      
+        
+        <h2>Initial state</h2>
+<p>You may remember, from above, the <code>loggedInUser</code> field that we gave to
+<code>navigator.id.watch</code>. It told Persona who we think is logged in when the page loads.
+If you are generating your page on the server-side, with a template, you can
+pre-fill this field with the email address of the current user.
+We aren&#39;t, so we&#39;ll instead query the server and ask it about the state of
+the current user. (If no one is logged in, we&#39;ll have the server return <code>idk</code>.)
+Once we&#39;ve done this, we&#39;re all set to initialize Persona.</p>
+
+        
+          <div class="highlight"><pre>currentUser = <span class="literal">null</span>
+$.get <span class="string">'/whoami'</span>, (email) -&gt;
+    <span class="keyword">if</span> email <span class="keyword">is</span> <span class="string">'idk'</span>
+        showPublicPage()
+    <span class="keyword">else</span>
+        currentUser = email
+        showPrivatePage()
+    init()</pre></div>
+        
+      
+        
+        <h2>Triggering login and logout events</h2>
+<p>We&#39;ve covered almost everything on the client side, except for one thing!
+We talked about getting login and logout events, but how do we tell when the user
+wants to sign in or sign out? We already have the necessary buttons, we just
+need to associate the right behaviors with them.</p>
+<p>When users click on the &quot;Sign in&quot; and &quot;Sign out&quot; buttons, we want 
+<code>navigator.id.watch</code> to trigger the login and logout functions we provided.
+To do this, we make use of two more small and straightforward pieces of the
+<code>navigator.id</code> API.</p>
+
+        
+          <div class="highlight"><pre>$(<span class="string">'#login'</span>).click -&gt;
+    navigator.id.request()
+
+$(<span class="string">'#logout'</span>).click -&gt;
+    navigator.id.logout()</pre></div>
+        
+      
+        
+        <p>That&#39;s it! This is everything you need for Persona to work on the client-side.
+Be sure to check out <a href="server.html">what happens on the server</a>, too.</p>
+
+        
+      
+      <div class="fleur">h</div>
+    </div>
+  </div>
+</body>
+</html>
