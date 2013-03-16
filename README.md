@@ -40,7 +40,7 @@ that lets you log in and log out. The source code is split into two major parts.
 You can [get the demo](https://github.com/nmalkin/persona-demo) from Github:
 
 ```
-    git clone git://github.com/nmalkin/persona-demo.git
+git clone git://github.com/nmalkin/persona-demo.git
 ```
 
 For readability and consistency, both the client and the server are written in
@@ -63,7 +63,7 @@ If you'd like to re-generate it, run `make docs`.
 To run the server, make sure you have [node.js](http://nodejs.org), then run:
 
 ```
-    make run
+make run
 ```
 
 The server will run, by default, on [http://127.0.0.1:8080]().
