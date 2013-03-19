@@ -68,6 +68,8 @@ __Important__: the audience must match the server for which the assertion is
 generated. So, if you host your login page at `example.com` but you declare
 your audience as `http://example.org`, there's going to be a mismatch, and
 verification will fail.
+(The same problem will occur if you run the demo on `localhost` instead of
+`127.0.0.1`.)
 
 #### Remote Verification API in action
 Here, we formulate the request that we'll make to the Remote Verification API

@@ -115,7 +115,9 @@ it over HTTPS, and running on port 443, your audience would be
 <p><strong>Important</strong>: the audience must match the server for which the assertion is
 generated. So, if you host your login page at <code>example.com</code> but you declare
 your audience as <code>http://example.org</code>, there&#39;s going to be a mismatch, and
-verification will fail.</p>
+verification will fail.
+(The same problem will occur if you run the demo on <code>localhost</code> instead of
+<code>127.0.0.1</code>.)</p>
 <h4>Remote Verification API in action</h4>
 <p>Here, we formulate the request that we&#39;ll make to the Remote Verification API
 by first putting together the body (consisting of the assertion and audience),
